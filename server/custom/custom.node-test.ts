@@ -73,6 +73,21 @@ test("claude: removes --dangerously-skip-permissions and denies Bash", () => {
   const allowed = args.find((a) => a.startsWith("--allowedTools="))!;
   assert.ok(allowed.includes("WebSearch") && !allowed.includes("Bash"));
   assert.ok(args.includes("--disallowedTools=Bash,NotebookEdit,KillShell"));
+  assert.equal(args.find((a) => a.startsWith("--tools=")), allowed.replace("--allowedTools=", "--tools="));
+});
+
+test("usage parser handles a real Claude Code stream (captured from CLI 2.1.x)", () => {
+  // Captured locally with the exact safe-mode flags (run failed at auth, but stream format is real).
+  const db = makeDb();
+  const fixture = [
+    '{"type":"system","subtype":"init","cwd":"/tmp","tools":["Edit","Glob","Grep","Read","Skill","WebFetch","WebSearch","Write"],"model":"claude-sonnet-5-5","permissionMode":"acceptEdits"}',
+    '{"type":"result","subtype":"success","is_error":true,"total_cost_usd":0,"usage":{"input_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":0},"modelUsage":{},"result":"Authentication error"}',
+  ].join("\n");
+  assert.equal(recordUsageFromOutput(db as any, "claude", { taskId: "t1", source: "task_run" }, fixture), 1);
+  const row = db.prepare("SELECT * FROM agent_usage_events").get() as any;
+  assert.equal(row.model, "claude-sonnet-5-5");
+  assert.equal(row.cost_usd, 0);
+  assert.equal(row.cost_source, "reported");
 });
 
 test("claude: CLAW_SAFE_ALLOWED_TOOLS cannot re-enable Bash", () => {

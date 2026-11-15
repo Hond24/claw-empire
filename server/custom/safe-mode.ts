@@ -19,7 +19,8 @@
 
 export type AgentPermissionMode = "safe" | "legacy";
 
-export const DEFAULT_SAFE_ALLOWED_TOOLS = ["Read", "Edit", "Write", "Glob", "Grep", "WebSearch", "WebFetch", "TodoWrite"];
+// "Skill" lets Claude Code load project skills from <project>/.claude/skills (company know-how)
+export const DEFAULT_SAFE_ALLOWED_TOOLS = ["Read", "Edit", "Write", "Glob", "Grep", "WebSearch", "WebFetch", "TodoWrite", "Skill"];
 
 // Tools explicitly denied even if a provider/version would otherwise allow them.
 export const SAFE_DISALLOWED_TOOLS = ["Bash", "NotebookEdit", "KillShell"];
@@ -64,10 +65,14 @@ export function applyPermissionMode(
         out.push("--permission-mode", "default");
         return out;
       }
+      const tools = resolveAllowedTools().join(",");
       out.push(
         "--permission-mode",
         "acceptEdits",
-        `--allowedTools=${resolveAllowedTools().join(",")}`,
+        // --tools limits which built-in tools exist at all (Bash/Task/etc. disappear);
+        // --allowedTools pre-approves them so print mode never stalls on a prompt.
+        `--tools=${tools}`,
+        `--allowedTools=${tools}`,
         `--disallowedTools=${SAFE_DISALLOWED_TOOLS.join(",")}`,
       );
       return out;

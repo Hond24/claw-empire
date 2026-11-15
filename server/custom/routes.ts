@@ -103,10 +103,12 @@ th:first-child,td:first-child{text-align:left} th{background:#f3f4f6;font-weight
 <table><thead><tr><th>AI社員</th><th>実行回数</th><th>入力tok</th><th>出力tok</th><th>キャッシュ読込</th><th>費用(USD)</th><th>単価未設定</th></tr></thead><tbody id="rows"></tbody></table>
 <script>
 const fmt=n=>Number(n||0).toLocaleString('ja-JP');
+let authed=false;
 async function load(){
+  if(!authed){await fetch('/api/auth/session',{credentials:'same-origin'});authed=true;}
   const days=Number(document.getElementById('range').value);
   const from=days>0?Date.now()-days*86400000:0;
-  const r=await fetch('/api/custom/agent-costs?from='+from);
+  const r=await fetch('/api/custom/agent-costs?from='+from,{credentials:'same-origin'});
   const j=await r.json();
   document.getElementById('total').textContent='$'+Number(j.total_cost_usd||0).toFixed(4);
   const tb=document.getElementById('rows'); tb.innerHTML='';
