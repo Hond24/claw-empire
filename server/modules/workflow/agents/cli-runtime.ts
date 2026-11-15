@@ -2,6 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
+import { createUsageAccumulator } from "../../../custom/usage-ledger.ts";
+import { createApprovalStreamScanner } from "../../../custom/approval-requests.ts";
+import { resolveAgentPermissionMode, SAFE_MODE_PROMPT_NOTE } from "../../../custom/safe-mode.ts";
 
 type CliRuntimeDeps = {
   db: any;
@@ -232,6 +235,12 @@ export function createCliRuntimeTools(deps: CliRuntimeDeps) {
     fs.writeFileSync(promptPath, prompt, "utf8");
 
     const args = buildAgentArgs(provider, model, reasoningLevel);
+    // [solo-company] per-agent cost ledger + CEO approval request scanner
+    const usageAcc = createUsageAccumulator(db, provider, { taskId, source: "task_run" });
+    const approvalScanner = createApprovalStreamScanner(db, { taskId }, (row) => {
+      appendTaskLog(taskId, "system", `CEO approval requested: [${row.action_type}] ${row.summary.slice(0, 200)}`);
+      broadcast("task_update", { id: taskId });
+    });
     const logStream = fs.createWriteStream(logPath, { flags: "a" });
     const { safeWrite, safeEnd } = createSafeLogStreamOps(logStream);
     safeWrite(`\n===== task run start ${new Date().toISOString()} | provider=${provider} =====\n`);
@@ -327,7 +336,7 @@ export function createCliRuntimeTools(deps: CliRuntimeDeps) {
     });
 
     // Deliver prompt via stdin (cross-platform safe)
-    child.stdin?.write(prompt);
+    child.stdin?.write(resolveAgentPermissionMode() === "safe" ? `${prompt}\n${SAFE_MODE_PROMPT_NOTE}\n` : prompt);
     child.stdin?.end();
 
     // Pipe agent output to log file AND broadcast via WebSocket
@@ -336,6 +345,8 @@ export function createCliRuntimeTools(deps: CliRuntimeDeps) {
       const text = normalizeStreamChunk(chunk, { dropCliNoise: true });
       if (!text) return;
       if (shouldSkipDuplicateCliOutput(taskId, "stdout", text)) return;
+      usageAcc.push(text);
+      approvalScanner.push(text);
       safeWrite(text);
       broadcast("cli_output", { task_id: taskId, stream: "stdout", data: text });
       parseAndCreateSubtasks(taskId, text);
@@ -355,6 +366,8 @@ export function createCliRuntimeTools(deps: CliRuntimeDeps) {
       finished = true;
       clearRunTimers();
       detachOutputListeners();
+      usageAcc.flush();
+      approvalScanner.flush();
       safeEnd();
       try {
         fs.unlinkSync(promptPath);

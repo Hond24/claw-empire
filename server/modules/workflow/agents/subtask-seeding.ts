@@ -176,9 +176,12 @@ export function createSubtaskSeedingTools(deps: SubtaskSeedingDeps) {
       const afterColon = detail.includes(":") ? detail.split(":").slice(1).join(":").trim() : detail;
       const titleCore = (afterColon || detail).slice(0, 56).trim();
       const clippedTitle = titleCore.length > 54 ? `${titleCore.slice(0, 53).trimEnd()}…` : titleCore;
-      const targetDeptId = analyzeSubtaskDepartment(detail, baseDeptId);
-      const targetDeptName = targetDeptId ? getDeptName(targetDeptId, task.workflow_pack_key ?? null) : "";
+      let targetDeptId = analyzeSubtaskDepartment(detail, baseDeptId);
       const targetLeader = targetDeptId ? findTeamLeader(targetDeptId, constrainedAgentIds) : null;
+      // [solo-company] never route to a department with no eligible leader for this project
+      // (otherwise the subtask stays blocked forever and the review gate stalls)
+      if (targetDeptId && !targetLeader) targetDeptId = null;
+      const targetDeptName = targetDeptId ? getDeptName(targetDeptId, task.workflow_pack_key ?? null) : "";
       if (targetDeptId && targetDeptId !== baseDeptId) {
         noteDetectedDeptSet.add(targetDeptId);
       }
@@ -423,9 +426,12 @@ export function createSubtaskSeedingTools(deps: SubtaskSeedingDeps) {
       const afterColon = detail.includes(":") ? detail.split(":").slice(1).join(":").trim() : detail;
       const titleCore = (afterColon || detail).slice(0, 56).trim();
       const clippedTitle = titleCore.length > 54 ? `${titleCore.slice(0, 53).trimEnd()}…` : titleCore;
-      const targetDeptId = analyzeSubtaskDepartment(detail, baseDeptId);
-      const targetDeptName = targetDeptId ? getDeptName(targetDeptId, task.workflow_pack_key ?? null) : "";
+      let targetDeptId = analyzeSubtaskDepartment(detail, baseDeptId);
       const targetLeader = targetDeptId ? findTeamLeader(targetDeptId, constrainedAgentIds) : null;
+      // [solo-company] never route to a department with no eligible leader for this project
+      // (otherwise the subtask stays blocked forever and the review gate stalls)
+      if (targetDeptId && !targetLeader) targetDeptId = null;
+      const targetDeptName = targetDeptId ? getDeptName(targetDeptId, task.workflow_pack_key ?? null) : "";
 
       items.push({
         title: pickL(

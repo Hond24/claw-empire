@@ -15,6 +15,11 @@ import { createDecisionStateHelpers } from "./decision-inbox/state-helpers.ts";
 import { createProjectReviewPlanningHelpers } from "./decision-inbox/project-review-planning.ts";
 import { createReviewRoundPlanningHelpers } from "./decision-inbox/review-round-planning.ts";
 import { readYoloModeEnabled, runYoloDecisionAutopilot } from "./decision-inbox/yolo-mode.ts";
+import {
+  APPROVAL_DECISION_KIND,
+  buildApprovalDecisionItems,
+  handleApprovalDecisionReply,
+} from "../../../../custom/approval-requests.ts";
 
 export type { DecisionReplyBridgeInput, DecisionReplyBridgeResult };
 
@@ -176,6 +181,8 @@ export function registerDecisionInboxRoutes(ctx: RuntimeContext): DecisionInboxR
       ...buildProjectReviewDecisionItems(),
       ...buildReviewRoundDecisionItems(),
       ...buildTimeoutResumeDecisionItems(),
+      // [solo-company] CEO approval requests for external actions
+      ...(buildApprovalDecisionItems(db as any) as DecisionInboxRouteItem[]),
     ];
     items.sort((a, b) => b.created_at - a.created_at);
     return items;
@@ -191,6 +198,13 @@ export function registerDecisionInboxRoutes(ctx: RuntimeContext): DecisionInboxR
     const optionNumber = Number(body.option_number ?? body.optionNumber ?? body.option);
     if (!Number.isFinite(optionNumber)) {
       return { status: 400, payload: { error: "option_number_required" } };
+    }
+
+    // [solo-company] CEO approval requests are handled by the custom module
+    const approvalResult = handleApprovalDecisionReply(db as any, decisionId, optionNumber, body, { appendTaskLog });
+    if (approvalResult) {
+      if (approvalResult.status === 200) broadcast("task_update", { id: null });
+      return approvalResult;
     }
 
     const currentItem = getDecisionInboxItems().find((item) => item.id === decisionId);
@@ -321,6 +335,8 @@ export function registerDecisionInboxRoutes(ctx: RuntimeContext): DecisionInboxR
         getDecisionInboxItems,
         applyDecisionReply,
         shouldSkipItem: (item) => {
+          // [solo-company] external-action approvals always require a human CEO decision
+          if ((item.kind as string) === APPROVAL_DECISION_KIND) return true;
           if (item.kind === "review_round_pick" && item.task_id) {
             const row = db.prepare("SELECT workflow_pack_key FROM tasks WHERE id = ? LIMIT 1").get(item.task_id) as
               | { workflow_pack_key?: string | null }

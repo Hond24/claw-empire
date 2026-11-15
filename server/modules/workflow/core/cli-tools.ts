@@ -1,5 +1,6 @@
 import os from "node:os";
 import path from "node:path";
+import { applyPermissionMode } from "../../../custom/safe-mode.ts";
 
 export type CliOutputStream = "stdout" | "stderr";
 
@@ -45,7 +46,17 @@ export function createCliTools(deps: CreateCliToolsDeps) {
     return parts.join(path.delimiter);
   }
 
+  // [solo-company] all agent launches pass through the permission-mode filter (safe by default)
   function buildAgentArgs(
+    provider: string,
+    model?: string,
+    reasoningLevel?: string,
+    opts: { noTools?: boolean } = {},
+  ): string[] {
+    return applyPermissionMode(provider, buildAgentArgsUpstream(provider, model, reasoningLevel, opts));
+  }
+
+  function buildAgentArgsUpstream(
     provider: string,
     model?: string,
     reasoningLevel?: string,

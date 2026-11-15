@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { recordUsageFromOutput } from "../../../custom/usage-ledger.ts";
 import type { AgentRow, OneShotRunOptions, OneShotRunResult } from "./conversation-types.ts";
 
 type CreateOneShotRunnerDeps = {
+  db?: any; // [solo-company] usage ledger
   logsDir: string;
   broadcast: (event: string, payload: unknown) => void;
   getProviderModelConfig: () => Record<string, { model?: string; reasoningLevel?: string }>;
@@ -22,6 +24,7 @@ type CreateOneShotRunnerDeps = {
 
 export function createOneShotRunner(deps: CreateOneShotRunnerDeps) {
   const {
+    db,
     logsDir,
     broadcast,
     getProviderModelConfig,
@@ -259,6 +262,12 @@ export function createOneShotRunner(deps: CreateOneShotRunnerDeps) {
           child.stdin?.write(prompt);
           child.stdin?.end();
         });
+        // [solo-company] meetings / one-shot replies also cost tokens: record per agent
+        try {
+          if (db) recordUsageFromOutput(db, provider, { agentId: agent.id, taskId: streamTaskId, source: "one_shot", runId }, rawOutput);
+        } catch (err) {
+          console.warn(`[usage-ledger] one-shot record failed: ${String(err)}`);
+        }
       }
     } catch (err: any) {
       const message = err?.message ? String(err.message) : String(err);

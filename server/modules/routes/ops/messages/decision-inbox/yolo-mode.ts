@@ -41,6 +41,8 @@ function normalizeBooleanLike(value: unknown): boolean | null {
 }
 
 export function readYoloModeEnabled(db: Pick<DatabaseSync, "prepare">): boolean {
+  // [solo-company] YOLO (auto-approve) is disabled unless explicitly allowed by env
+  if (process.env.CLAW_ALLOW_YOLO !== "1") return false;
   const row = db.prepare("SELECT value FROM settings WHERE key = 'yoloMode' LIMIT 1").get() as
     | { value?: unknown }
     | undefined;

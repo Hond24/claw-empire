@@ -30,7 +30,21 @@ describe("readYoloModeEnabled", () => {
     try {
       db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)");
       db.prepare("INSERT INTO settings (key, value) VALUES ('yoloMode', 'true')").run();
+      process.env.CLAW_ALLOW_YOLO = "1";
       expect(readYoloModeEnabled(db as any)).toBe(true);
+    } finally {
+      delete process.env.CLAW_ALLOW_YOLO;
+      db.close();
+    }
+  });
+
+  it("[solo-company] CLAW_ALLOW_YOLO가 없으면 settings.yoloMode=true여도 비활성", () => {
+    const db = new DatabaseSync(":memory:");
+    try {
+      db.exec("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT)");
+      db.prepare("INSERT INTO settings (key, value) VALUES ('yoloMode', 'true')").run();
+      delete process.env.CLAW_ALLOW_YOLO;
+      expect(readYoloModeEnabled(db as any)).toBe(false);
     } finally {
       db.close();
     }

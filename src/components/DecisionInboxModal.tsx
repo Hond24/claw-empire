@@ -201,12 +201,16 @@ export default function DecisionInboxModal({
         zh: "评审轮次决策",
       });
     }
+    if (kind === "ceo_approval_request") {
+      return t({ ko: "CEO 승인 요청", en: "CEO Approval", ja: "CEO承認申請", zh: "CEO 审批" });
+    }
     return t({ ko: "에이전트 요청", en: "Agent Request", ja: "エージェント要請", zh: "代理请求" });
   };
   const getKindAvatarFallback = (kind: DecisionInboxItem["kind"]) => {
     if (kind === "project_review_ready") return "🧑‍💼";
     if (kind === "task_timeout_resume") return "⏱️";
     if (kind === "review_round_pick") return "🧾";
+    if (kind === "ceo_approval_request") return "🛡️";
     return "🤖";
   };
 
