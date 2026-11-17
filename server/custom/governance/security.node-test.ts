@@ -289,10 +289,15 @@ describe("launch material comes only from main HEAD", () => {
   });
   test("claude launch never loads worktree settings or MCP servers", () => {
     const args = applyPermissionMode("claude", ["claude", "--dangerously-skip-permissions", "--print"], "safe");
-    const i = args.indexOf("--setting-sources");
-    assert.ok(i > 0 && args[i + 1] === "");
+    // empty setting sources as a single token: no user/project/local settings, hooks or MCP from the worktree
+    assert.ok(args.includes("--setting-sources="));
+    // no other form may override it, and no empty argv element (a shell would drop it and shift the flags)
+    assert.ok(!args.some((a) => a === "--setting-sources" || (a.startsWith("--setting-sources=") && a !== "--setting-sources=")));
+    assert.ok(!args.includes(""));
     assert.ok(args.includes("--strict-mcp-config"));
     const meeting = applyPermissionMode("claude", ["claude", "--print", "--tools="], "safe");
+    assert.ok(meeting.includes("--setting-sources="));
+    assert.ok(!meeting.includes(""));
     assert.ok(meeting.includes("--strict-mcp-config"));
   });
   test("a broken manifest produces deny-everything settings", () => {
