@@ -5,6 +5,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createUsageAccumulator } from "../../../custom/usage-ledger.ts";
 import { createApprovalStreamScanner } from "../../../custom/approval-requests.ts";
 import { resolveAgentPermissionMode, SAFE_MODE_PROMPT_NOTE } from "../../../custom/safe-mode.ts";
+import { prepareGovernanceLaunch, resolveTaskAgent } from "../../../custom/governance/launch.ts";
+import { isGovernanceEnabled } from "../../../custom/governance/trusted.ts";
 
 type CliRuntimeDeps = {
   db: any;
@@ -235,6 +237,26 @@ export function createCliRuntimeTools(deps: CliRuntimeDeps) {
     fs.writeFileSync(promptPath, prompt, "utf8");
 
     const args = buildAgentArgs(provider, model, reasoningLevel);
+    // [solo-company][M1] governance: hook/settings/skills/policy from main HEAD; unhooked CLIs refused
+    let govEnv: Record<string, string> = {};
+    let govRefusal: string | null = null;
+    if (resolveAgentPermissionMode() === "safe" && isGovernanceEnabled()) {
+      if (provider === "claude") {
+        try {
+          const who = resolveTaskAgent(db, taskId);
+          const gov = prepareGovernanceLaunch({ worktreePath: projectPath, taskId, agentId: who.agentId, dept: who.dept });
+          args.push(...gov.args);
+          govEnv = gov.env;
+          if (!gov.manifestValid) {
+            appendTaskLog(taskId, "system", "[governance] governance/protection.json が main にないか不正なため、ファイル操作はすべて拒否されます（fail-closed）");
+          }
+        } catch (err) {
+          govRefusal = `[governance] 起動準備に失敗したため実行を中止しました: ${err instanceof Error ? err.message : String(err)}`;
+        }
+      } else if (process.env.CLAW_ALLOW_UNHOOKED_PROVIDERS !== "1") {
+        govRefusal = `[governance] プロバイダー「${provider}」には事前検査（フック）がないため、AI社員の実行には使えません。Claude を使ってください。`;
+      }
+    }
     // [solo-company] per-agent cost ledger + CEO approval request scanner
     const usageAcc = createUsageAccumulator(db, provider, { taskId, source: "task_run" });
     const approvalScanner = createApprovalStreamScanner(db, { taskId }, (row) => {
@@ -254,8 +276,19 @@ export function createCliRuntimeTools(deps: CliRuntimeDeps) {
     cleanEnv.FORCE_COLOR = "0";
     cleanEnv.CI = "1";
     if (!cleanEnv.TERM) cleanEnv.TERM = "dumb";
+    Object.assign(cleanEnv, govEnv);
 
-    const child = spawn(args[0], args.slice(1), {
+    if (govRefusal) {
+      appendTaskLog(taskId, "system", govRefusal);
+      safeWrite(`${govRefusal}\n`);
+    }
+    const child = govRefusal
+      ? spawn(process.execPath, ["-e", `process.stderr.write(${JSON.stringify(govRefusal + "\n")});process.exit(1)`], {
+          cwd: projectPath,
+          env: cleanEnv,
+          stdio: ["pipe", "pipe", "pipe"],
+        })
+      : spawn(args[0], args.slice(1), {
       cwd: projectPath,
       env: cleanEnv,
       shell: process.platform === "win32",

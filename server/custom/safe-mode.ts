@@ -60,6 +60,9 @@ export function applyPermissionMode(
     case "claude": {
       const idx = out.indexOf("--dangerously-skip-permissions");
       if (idx >= 0) out.splice(idx, 1);
+      // [M1] never load settings/hooks/MCP from the worktree, the user's ~/.claude or ~/.claude.json:
+      // governance material is passed explicitly with --settings/--plugin-dir by the server.
+      out.push("--setting-sources", "", "--strict-mcp-config");
       // no-tools runs (meetings) already pass --tools= ; keep them tool-less
       if (out.includes("--tools=")) {
         out.push("--permission-mode", "default");

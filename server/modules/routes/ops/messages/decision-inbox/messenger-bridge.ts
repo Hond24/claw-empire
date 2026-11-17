@@ -443,6 +443,18 @@ export function createDecisionInboxMessengerBridge(deps: DecisionBridgeDeps) {
       return { handled: true, status: 404, payload: { error: "decision_not_found_for_route" } };
     }
 
+    // [solo-company][M1] governance approvals are never accepted from chat / messengers
+    if ((pendingDecision.kind as string) === "ceo_approval_request" || String(pendingDecision.id).startsWith("ceo-approval:")) {
+      await sendMessengerMessage({
+        channel: route.channel,
+        targetId: route.targetId,
+        text: "🛡️ この承認はチャットでは行えません。バーチャルオフィスの承認画面から、CEO本人の認証で操作してください。",
+      }).catch(() => {
+        // no-op
+      });
+      return { handled: true, status: 403, payload: { error: "approval_requires_office_ui" } };
+    }
+
     const validOptionNumbers = numbers.filter((num) => pendingDecision.options.some((option) => option.number === num));
     let selectedOptionNumber = validOptionNumbers[0];
     if (!selectedOptionNumber && isApproveWord && pendingDecision.options.length > 0) {

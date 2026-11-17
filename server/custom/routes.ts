@@ -17,6 +17,9 @@ import {
 } from "./approval-requests.ts";
 import { resolveAgentPermissionMode } from "./safe-mode.ts";
 import { isPiiGuardEnabled } from "./pii-guard.ts";
+import { hardenProcessGitEnvironment } from "./governance/git-safe.ts";
+import { readJsonl } from "./governance/merge-gate.ts";
+import { governanceLogDir, isGovernanceEnabled } from "./governance/trusted.ts";
 
 type MinimalCtx = {
   app: any;
@@ -38,10 +41,22 @@ function toMs(value: unknown): number | undefined {
 export function registerCustomRoutes(ctx: MinimalCtx): void {
   const { app, db, broadcast } = ctx;
   ensureCustomSchemas(db);
+  // [M1] every git call made by this server runs without hooks / fsmonitor / ext transports
+  hardenProcessGitEnvironment();
 
   console.log(
-    `[solo-company] permission mode=${resolveAgentPermissionMode()} pii_guard=${isPiiGuardEnabled() ? "on" : "off"} yolo_allowed=${process.env.CLAW_ALLOW_YOLO === "1"}`,
+    `[solo-company] permission mode=${resolveAgentPermissionMode()} governance=${isGovernanceEnabled() ? "on" : "off"} pii_guard=${isPiiGuardEnabled() ? "on" : "off"} yolo_allowed=${process.env.CLAW_ALLOW_YOLO === "1"}`,
   );
+
+  app.get("/api/custom/governance/violations", (req: any, res: any) => {
+    const limit = Math.min(1000, Math.max(1, Number(req.query?.limit ?? 200) || 200));
+    res.json({ ok: true, enabled: isGovernanceEnabled(), log_dir: governanceLogDir(), violations: readJsonl("violations.jsonl", limit) });
+  });
+
+  app.get("/api/custom/governance/web-access", (req: any, res: any) => {
+    const limit = Math.min(1000, Math.max(1, Number(req.query?.limit ?? 200) || 200));
+    res.json({ ok: true, entries: readJsonl("web-access.jsonl", limit) });
+  });
 
   app.get("/api/custom/agent-costs", (req: any, res: any) => {
     const rows = summarizeAgentCosts(db, { fromMs: toMs(req.query?.from), toMs: toMs(req.query?.to) });

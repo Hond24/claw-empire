@@ -1,6 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { decryptSecret } from "../../../../oauth/helpers.ts";
 import type { WorktreeInfo } from "./lifecycle.ts";
+import { checkMergeAllowed, recordViolations } from "../../../../custom/governance/merge-gate.ts";
+import { resolveTaskAgent } from "../../../../custom/governance/launch.ts";
+import { isGovernanceEnabled } from "../../../../custom/governance/trusted.ts";
 import {
   autoCommitWorktreePendingChanges,
   DIFF_SUMMARY_ERROR,
@@ -88,6 +91,28 @@ export function createWorktreeMergeTools(deps: CreateWorktreeMergeToolsDeps) {
       })
         .toString()
         .trim();
+
+      // [solo-company][M1] merge gate: judge every changed path with the trusted manifest (main HEAD)
+      if (isGovernanceEnabled()) {
+        const who = resolveTaskAgent(db, taskId);
+        let gate: ReturnType<typeof checkMergeAllowed>;
+        try {
+          gate = checkMergeAllowed(projectPath, info.branchName, who.dept);
+        } catch (err) {
+          const msg = `[governance] マージ前の検査に失敗したため、マージを中止しました: ${err instanceof Error ? err.message : String(err)}`;
+          appendTaskLog(taskId, "system", msg);
+          return { success: false, message: msg };
+        }
+        if (!gate.ok) {
+          recordViolations(
+            gate.violations.map((v) => ({ source: "merge_gate", task: taskId, agent: who.agentId, dept: who.dept, branch: info.branchName, op: v.op, path: v.path, rule: v.ruleId, reason: v.reason })),
+          );
+          const list = gate.violations.slice(0, 10).map((v) => `- ${v.path}: ${v.reason}`).join("\n");
+          const msg = `[governance] 保護規則に反する変更が ${gate.violations.length} 件あるため、マージを中止しました（main は変更されていません）。\n${list}`;
+          appendTaskLog(taskId, "system", msg);
+          return { success: false, message: msg, conflicts: gate.violations.map((v) => v.path) };
+        }
+      }
 
       try {
         const diffCheck = execFileSync("git", ["diff", `${currentBranch}...${info.branchName}`, "--stat"], {
