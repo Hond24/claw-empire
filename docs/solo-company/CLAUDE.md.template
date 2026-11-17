@@ -1,0 +1,8 @@
+# CLAUDE.md（solo-company フォークの開発向け・新規作成）
+
+このファイルは行動指示です。技術的なアクセス制御の代わりにはなりません（制御は server/custom/governance/ と Docker が担います）。
+ルールの正本は次のファイルです。重複を避けるため、ここには参照だけを書きます。
+
+@docs/solo-company/DEV_RULES.md
+
+補足：リポジトリ直下の AGENTS.md は、元の Claw Empire のオーケストレーション規則（OpenClaw 向け）です。変更せず、読み込みもしません。
