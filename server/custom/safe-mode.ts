@@ -62,7 +62,11 @@ export function applyPermissionMode(
       if (idx >= 0) out.splice(idx, 1);
       // [M1] never load settings/hooks/MCP from the worktree, the user's ~/.claude or ~/.claude.json:
       // governance material is passed explicitly with --settings/--plugin-dir by the server.
-      out.push("--setting-sources", "", "--strict-mcp-config");
+      // `--setting-sources=` (one argv token, empty value) = load no user/project/local settings.
+      // Same effect as `--setting-sources ""` (verified with Claude Code CLI 2.1.326), but never emits
+      // an empty argv element, which a shell (spawn with shell:true on win32) would silently drop and
+      // thereby swallow the next flag as the value.
+      out.push("--setting-sources=", "--strict-mcp-config");
       // no-tools runs (meetings) already pass --tools= ; keep them tool-less
       if (out.includes("--tools=")) {
         out.push("--permission-mode", "default");
